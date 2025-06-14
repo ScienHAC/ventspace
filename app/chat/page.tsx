@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Send, Mic, MicOff, Leaf, Heart, AlertTriangle, Phone } from "lucide-react"
+import { Send, Mic, MicOff, Leaf, Heart, AlertTriangle, Phone, Volume2, VolumeX } from "lucide-react" // 🔊 Added Volume icons
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 
@@ -51,15 +51,152 @@ export default function ChatPage() {
   const [isClient, setIsClient] = useState(false)
   const [typingMessageId, setTypingMessageId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const chatContainerRef = useRef<HTMLDivElement>(null) // Add chat container ref
+  const chatContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const requestInProgress = useRef(false)
 
-  // 🧠 NEW: Add conversation history state
+  // 🧠 Conversation history state
   const [conversationHistory, setConversationHistory] = useState<Array<{sender: string, text: string, timestamp: string}>>([])
+
+  // 🔊 NEW: Text-to-speech state
+  const [isSpeechEnabled, setIsSpeechEnabled] = useState(true)
+  const [isCurrentlySpeaking, setIsCurrentlySpeaking] = useState(false)
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   useEffect(() => {
     setIsClient(true)
+    
+    // 🔊 NEW: Initialize speech synthesis
+    if (typeof window !== "undefined" && 'speechSynthesis' in window) {
+      // Load voices
+      speechSynthesis.getVoices()
+      speechSynthesis.onvoiceschanged = () => {
+        console.log('🔊 Speech voices loaded:', speechSynthesis.getVoices().length)
+      }
+    }
+
+    // 🔊 NEW: Cleanup on unmount
+    return () => {
+      if (typeof window !== "undefined" && 'speechSynthesis' in window) {
+        speechSynthesis.cancel()
+      }
+    }
+  }, [])
+
+  // 🔊 NEW: Text-to-speech function
+  const speakMessage = useCallback((text: string) => {
+    if (!isSpeechEnabled || typeof window === "undefined" || !('speechSynthesis' in window)) {
+      return
+    }
+
+    // Clean text for speech
+    const cleanText = text
+      .replace(/[🌱🌟💪💙😊🌿💚🔥🫂✨💔🌳😢😰😠😐👋]/g, '') // Remove emojis
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.*?)\*/g, '$1') // Remove italic
+      .replace(/`(.*?)`/g, '$1') // Remove code
+      .replace(/\n+/g, '. ') // Replace line breaks
+      .trim()
+
+    if (!cleanText) return
+
+    try {
+      // Cancel any previous speech
+      if (currentUtteranceRef.current) {
+        speechSynthesis.cancel()
+        currentUtteranceRef.current = null
+      }
+
+      const utterance = new SpeechSynthesisUtterance(cleanText)
+      utterance.lang = 'en-US'
+      utterance.pitch = 1.1      // Friendly tone
+      utterance.rate = 1.2       // Faster speech
+      utterance.volume = 0.8     // Comfortable volume
+      
+      // Get friendly voice
+      const voices = speechSynthesis.getVoices()
+      const friendlyVoice = voices.find(v => 
+        v.name.includes("Google") || 
+        v.name.includes("Natural") || 
+        v.name.includes("Enhanced") ||
+        (v.name.includes("Female") && v.lang.includes("en"))
+      ) || voices.find(v => v.lang.includes("en")) || voices[0]
+      
+      if (friendlyVoice) {
+        utterance.voice = friendlyVoice
+      }
+
+      // Event listeners
+      utterance.onstart = () => {
+        setIsCurrentlySpeaking(true)
+        console.log('🔊 Started speaking')
+      }
+      
+      utterance.onend = () => {
+        setIsCurrentlySpeaking(false)
+        currentUtteranceRef.current = null
+        console.log('🔊 Finished speaking')
+      }
+      
+      utterance.onerror = (error) => {
+        setIsCurrentlySpeaking(false)
+        currentUtteranceRef.current = null
+        console.error('🔊 Speech error:', error)
+      }
+
+      // Store reference and speak
+      currentUtteranceRef.current = utterance
+      speechSynthesis.speak(utterance)
+
+    } catch (error) {
+      console.error('🔊 Speech synthesis error:', error)
+      setIsCurrentlySpeaking(false)
+      currentUtteranceRef.current = null
+    }
+  }, [isSpeechEnabled])
+
+  // 🔊 NEW: Toggle speech function
+  const toggleSpeech = () => {
+    const newSpeechState = !isSpeechEnabled
+    setIsSpeechEnabled(newSpeechState)
+    
+    if (isCurrentlySpeaking && !newSpeechState) {
+      speechSynthesis.cancel()
+      setIsCurrentlySpeaking(false)
+      currentUtteranceRef.current = null
+    }
+    
+    toast({
+      title: newSpeechState ? "🔊 Speech Enabled" : "🔇 Speech Disabled",
+      description: newSpeechState ? "AI responses will be spoken aloud" : "AI responses will be silent now",
+    })
+  }
+
+  // 🔊 NEW: Stop current speech
+  const stopSpeaking = () => {
+    if (typeof window !== "undefined" && 'speechSynthesis' in window) {
+      speechSynthesis.cancel()
+      setIsCurrentlySpeaking(false)
+      currentUtteranceRef.current = null
+    }
+  }
+
+  // 🔊 NEW: Cleanup speech when chat ends
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (typeof window !== "undefined" && 'speechSynthesis' in window) {
+        speechSynthesis.cancel()
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      if (typeof window !== "undefined" && 'speechSynthesis' in window) {
+        speechSynthesis.cancel()
+      }
+    }
   }, [])
 
   const scrollToBottom = useCallback(() => {
@@ -94,46 +231,51 @@ export default function ChatPage() {
   }
 
   const simulateTyping = async (fullText: string, messageId: string) => {
-  const words = fullText.split(' ')
-  let currentText = ''
-  
-  setTypingMessageId(messageId)
+    const words = fullText.split(' ')
+    let currentText = ''
+    
+    setTypingMessageId(messageId)
 
-  for (let i = 0; i < words.length; i++) {
-    currentText += (i > 0 ? ' ' : '') + words[i]
+    for (let i = 0; i < words.length; i++) {
+      currentText += (i > 0 ? ' ' : '') + words[i]
 
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, text: currentText, isTyping: true }
+            : msg
+        )
+      )
+
+      // Faster delays for better UX
+      const delay = words[i].length < 3 ? 15 :
+                    words[i].length < 6 ? 25 :
+                    35
+
+      const extraDelay = /[.!?]/.test(words[i]) ? 100 : 0
+
+      await sleep(delay + extraDelay)
+      scrollToBottom()
+    }
+
+    // End of message
     setMessages(prev =>
       prev.map(msg =>
         msg.id === messageId
-          ? { ...msg, text: currentText, isTyping: true }
+          ? { ...msg, isTyping: false }
           : msg
       )
     )
-
-    // 🧠 Faster delays — but still realistic
-    const delay = words[i].length < 3 ? 20 :
-                  words[i].length < 6 ? 30 :
-                  45
-
-    const extraDelay = /[.!?]/.test(words[i]) ? 150 : 0
-
-    await sleep(delay + extraDelay)
-    scrollToBottom()
+    setTypingMessageId(null)
   }
-
-  // End of message
-  setMessages(prev =>
-    prev.map(msg =>
-      msg.id === messageId
-        ? { ...msg, isTyping: false }
-        : msg
-    )
-  )
-  setTypingMessageId(null)
-}
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || isLoading || requestInProgress.current) return
+
+    // 🔊 NEW: Stop any current speaking when user sends new message
+    if (isCurrentlySpeaking) {
+      stopSpeaking()
+    }
 
     requestInProgress.current = true
     const userMood = detectMood(inputText)
@@ -161,7 +303,7 @@ export default function ChatPage() {
 
     const currentInputText = inputText
     
-    // 🧠 FIXED: Add user message to conversation history BEFORE API call
+    // 🧠 Add user message to conversation history BEFORE API call
     const userHistoryMessage = {
       sender: "user",
       text: currentInputText,
@@ -189,7 +331,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           message: currentInputText,
-          conversationHistory: updatedHistory.slice(-6) // 🧠 Send updated history including current message
+          conversationHistory: updatedHistory.slice(-6)
         }),
       })
 
@@ -222,7 +364,7 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, aiResponse])
       setIsLoading(false)
       
-      // 🧠 FIXED: Add AI response to conversation history with proper timing
+      // 🧠 Add AI response to conversation history
       const aiHistoryMessage = {
         sender: "assistant",
         text: data.response,
@@ -231,7 +373,14 @@ export default function ChatPage() {
       
       setConversationHistory(prev => [...prev, aiHistoryMessage].slice(-20))
       console.log('🧠 Total conversation history:', updatedHistory.length + 1, 'messages')
-      
+
+      // 🔊 NEW: Start speech IMMEDIATELY when API response arrives
+      if (isSpeechEnabled) {
+        console.log('🔊 Starting speech immediately after API response')
+        speakMessage(data.response)
+      }
+
+      // Start typing animation in parallel with speech
       await simulateTyping(data.response, aiMessageId)
       
     } catch (error) {
@@ -256,7 +405,7 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, fallbackResponse])
       setIsLoading(false)
       
-      // 🧠 FIXED: Add fallback to conversation history
+      // 🧠 Add fallback to conversation history
       const fallbackHistoryMessage = {
         sender: "assistant",
         text: fallbackText,
@@ -264,6 +413,11 @@ export default function ChatPage() {
       }
       
       setConversationHistory(prev => [...prev, fallbackHistoryMessage].slice(-20))
+
+      // 🔊 NEW: Speak fallback message immediately
+      if (isSpeechEnabled) {
+        speakMessage(fallbackText)
+      }
       
       await simulateTyping(fallbackText, fallbackMessageId)
     } finally {
@@ -338,7 +492,7 @@ export default function ChatPage() {
 
   return (
     <div className="h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50 flex flex-col overflow-hidden">
-      {/* Fixed Header */}
+      {/* Fixed Header - EXACT SAME STYLING */}
       <header className="bg-white/80 backdrop-blur-md border-b border-green-100 flex-shrink-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center space-x-2">
@@ -365,6 +519,34 @@ export default function ChatPage() {
               {treesPlanted} trees planted
             </Badge>
             
+            {/* 🔊 NEW: Speech toggle button - same styling as other buttons */}
+            <Button
+              onClick={toggleSpeech}
+              variant="outline"
+              size="sm"
+              className={`${
+                isSpeechEnabled 
+                  ? "bg-green-100 text-green-800 border-green-300" 
+                  : "bg-gray-100 text-gray-600 border-gray-300"
+              }`}
+              title={isSpeechEnabled ? "Disable Speech" : "Enable Speech"}
+            >
+              {isSpeechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </Button>
+
+            {/* 🔊 NEW: Stop speaking button (only show when speaking) */}
+            {isCurrentlySpeaking && (
+              <Button
+                onClick={stopSpeaking}
+                variant="outline"
+                size="sm"
+                className="bg-red-100 text-red-600 border-red-300 animate-pulse"
+                title="Stop Speaking"
+              >
+                <VolumeX className="w-4 h-4" />
+              </Button>
+            )}
+            
             {showEmergencyHelp && (
               <Button 
                 variant="destructive" 
@@ -385,15 +567,15 @@ export default function ChatPage() {
         </div>
       </header>
 
-      {/* Chat Container - Flexible Height */}
+      {/* Chat Container - EXACT SAME STYLING */}
       <div className="flex-1 flex flex-col container mx-auto px-4 py-6 max-w-4xl min-h-0">
         <div className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-xl border border-green-100 flex flex-col flex-1 min-h-0">
           
-          {/* Messages Container - Scrollable */}
+          {/* Messages Container - EXACT SAME STYLING */}
           <div 
             ref={chatContainerRef}
             className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0"
-            style={{ maxHeight: 'calc(100vh - 280px)' }} // Adjust based on header + input heights
+            style={{ maxHeight: 'calc(100vh - 280px)' }}
           >
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
@@ -480,7 +662,7 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Fixed Input Area */}
+          {/* Fixed Input Area - EXACT SAME STYLING */}
           <div className="border-t border-green-100 p-6 bg-white/50 flex-shrink-0">
             <div className="flex items-center space-x-4">
               <div className="flex-1 relative">
@@ -520,6 +702,13 @@ export default function ChatPage() {
               <span>🧠 Ultra-Robust VentBot Active</span>
               <span>🌱 {10 - (ventCount % 10)} vents until next tree</span>
               <span>🔒 100% Anonymous & Safe</span>
+              {/* 🔊 NEW: Speech status indicator */}
+              {isSpeechEnabled && (
+                <span className="text-blue-600">🔊 Speech Mode</span>
+              )}
+              {conversationHistory.length > 0 && (
+                <span className="text-green-600">💾 {conversationHistory.length} messages remembered</span>
+              )}
             </div>
           </div>
         </div>
