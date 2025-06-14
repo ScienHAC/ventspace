@@ -24,6 +24,7 @@ RULES:
 - Use emojis but not too many
 - Address their specific problem directly
 - End with a short question or supportive statement
+- Remember and reference previous conversation when relevant
 
 EXAMPLES:
 User: "I can't get a job"
@@ -35,7 +36,57 @@ You: "Sorry you're feeling down. Want to talk about what's bothering you? 💙"
 User: "I'm happy"
 You: "Love that energy! What's making you smile today? 😊"
 
+If user asks if you remember something, check the conversation history and reference it.
 Keep it short, real, and caring like a best friend would text back.`
+
+// Enhanced local fallback with memory
+function generateLocalResponseWithMemory(message: string, mood: string, conversationHistory: any[]): string {
+  const lowerMessage = message.toLowerCase()
+  
+  // Check if asking about memory/previous conversation
+  if (lowerMessage.includes('remember') || lowerMessage.includes('before') || lowerMessage.includes('previous') || lowerMessage.includes('ask before')) {
+    if (conversationHistory.length > 1) {
+      // Find recent user messages (excluding current one)
+      const recentUserMessages = conversationHistory
+        .filter(msg => msg.sender === 'user')
+        .slice(-3, -1) // Get last 3 user messages, excluding current one
+      
+      if (recentUserMessages.length > 0) {
+        const lastUserMessage = recentUserMessages[recentUserMessages.length - 1]?.text
+        return `Yeah! You asked about "${lastUserMessage}" earlier. What else you wanna know? 😊`
+      }
+    }
+    return "This is our first chat, so no previous convos to remember! What's up? 😊"
+  }
+
+  // Job/Career
+  if (lowerMessage.includes('job') || lowerMessage.includes('work')) {
+    return "Job hunting is tough but you're tougher! What kind of work are you looking for? 💪"
+  }
+
+  // Motivation
+  if (lowerMessage.includes('motivat')) {
+    return "You're already winning by showing up! What's one small goal for today? ✨"
+  }
+
+  // Mood-based responses
+  if (mood === 'sad') {
+    return "Sorry you're feeling down. Want to talk about what's bothering you? 💙"
+  }
+  if (mood === 'anxious') {
+    return "Anxiety is tough. Take a deep breath with me? What's worrying you most? 🌿"
+  }
+  if (mood === 'happy') {
+    return "Love that energy! What's making you smile today? 🌟"
+  }
+
+  // Greetings
+  if (lowerMessage.match(/^(hi|hello|hey|hii)$/)) {
+    return "Hey! What's up? Anything on your mind today? 😊"
+  }
+
+  return "I'm here for whatever you want to talk about! What's on your mind? 💚"
+}
 
 // Mood and Issue Detection
 function analyzeMessage(text: string | undefined | null): { 
@@ -90,39 +141,6 @@ function analyzeMessage(text: string | undefined | null): {
   return { mood, confidence, needsHelp, category: 'general', specificIssues, severity: needsHelp ? 5 : specificIssues.length }
 }
 
-// Local fallback responses
-function generateLocalResponse(message: string, mood: string): string {
-  const lowerMessage = message.toLowerCase()
-
-  // Job/Career
-  if (lowerMessage.includes('job') || lowerMessage.includes('work')) {
-    return "Job hunting is tough but you're tougher! What kind of work are you looking for? 💪"
-  }
-
-  // Motivation
-  if (lowerMessage.includes('motivat')) {
-    return "You're already winning by showing up! What's one small goal for today? ✨"
-  }
-
-  // Mood-based responses
-  if (mood === 'sad') {
-    return "Sorry you're feeling down. Want to talk about what's bothering you? 💙"
-  }
-  if (mood === 'anxious') {
-    return "Anxiety is tough. Take a deep breath with me? What's worrying you most? 🌿"
-  }
-  if (mood === 'happy') {
-    return "Love that energy! What's making you smile today? 🌟"
-  }
-
-  // Greetings
-  if (lowerMessage.match(/^(hi|hello|hey|hii)$/)) {
-    return "Hey! What's up? Anything on your mind today? 😊"
-  }
-
-  return "I'm here for whatever you want to talk about! What's on your mind? 💚"
-}
-
 export async function POST(request: NextRequest) {
   try {
     const { message, mood, ventCount, conversationHistory = [] }: ChatRequest = await request.json()
@@ -132,6 +150,15 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('🤖 User said:', message)
+    console.log('🧠 Conversation history received:', conversationHistory.length, 'messages')
+    
+    // 🧠 DEBUG: Log the actual conversation history
+    if (conversationHistory.length > 0) {
+      console.log('📜 Recent conversation:')
+      conversationHistory.slice(-3).forEach((msg, i) => {
+        console.log(`  ${i}: ${msg.sender}: "${msg.text}"`)
+      })
+    }
 
     // Analyze the message
     const analysis = analyzeMessage(message)
@@ -140,7 +167,7 @@ export async function POST(request: NextRequest) {
     // Try GitHub AI first
     if (token) {
       try {
-        console.log('📨 Calling GitHub AI with gpt-4.1...')
+        console.log('📨 Calling GitHub AI with conversation memory...')
 
         // Initialize client exactly like your documentation
         const client = ModelClient(
@@ -148,16 +175,29 @@ export async function POST(request: NextRequest) {
           new AzureKeyCredential(token),
         )
 
-        // Build messages with conversation history
+        // 🧠 FIXED: Build messages with proper conversation history
         const messages = [
-          { role: "system", content: SYSTEM_PROMPT },
-          // Add last 4 conversation messages for context
-          ...conversationHistory.slice(-4).map((msg: any) => ({
-            role: msg.sender === "user" ? "user" : "assistant",
-            content: msg.text || msg.message
-          })),
-          { role: "user", content: message }
+          { role: "system", content: SYSTEM_PROMPT }
         ]
+
+        // 🧠 ADD: Include conversation history properly
+        if (conversationHistory.length > 0) {
+          // Add last 6 messages for context, but exclude the current message
+          const historyToInclude = conversationHistory.slice(-7, -1) // Exclude last message (current one)
+          historyToInclude.forEach((msg: any) => {
+            if (msg.sender && msg.text) {
+              messages.push({
+                role: msg.sender === "user" ? "user" : "assistant",
+                content: msg.text
+              })
+            }
+          })
+        }
+
+        // Add current user message
+        messages.push({ role: "user", content: message })
+
+        console.log('💭 Total messages to AI:', messages.length, '(1 system +', messages.length - 2, 'history +', '1 current)')
 
         // API call exactly like your documentation
         const response = await client.path("/chat/completions").post({
@@ -178,16 +218,16 @@ export async function POST(request: NextRequest) {
         }
 
         // Get response exactly like your documentation
-        aiResponse = response.body.choices[0].message.content || generateLocalResponse(message, analysis.mood)
-        console.log('✅ GitHub AI success:', aiResponse)
+        aiResponse = response.body.choices[0].message.content || generateLocalResponseWithMemory(message, analysis.mood, conversationHistory)
+        console.log('✅ GitHub AI with memory success:', aiResponse.substring(0, 80) + '...')
 
       } catch (error) {
         console.error('GitHub AI failed, using local fallback:', error)
-        aiResponse = generateLocalResponse(message, analysis.mood)
+        aiResponse = generateLocalResponseWithMemory(message, analysis.mood, conversationHistory)
       }
     } else {
       console.log('No GitHub token, using local response')
-      aiResponse = generateLocalResponse(message, analysis.mood)
+      aiResponse = generateLocalResponseWithMemory(message, analysis.mood, conversationHistory)
     }
 
     // Simulate API delay like your base code
@@ -204,7 +244,7 @@ export async function POST(request: NextRequest) {
       treeContributed: true,
       timestamp: new Date().toISOString(),
       ventCount: ventCount || 0,
-      source: token ? 'github_ai' : 'local_fallback'
+      source: token ? 'github_ai_with_memory' : 'local_with_memory'
     })
 
   } catch (error) {

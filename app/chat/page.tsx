@@ -55,6 +55,9 @@ export default function ChatPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const requestInProgress = useRef(false)
 
+  // 🧠 NEW: Add conversation history state
+  const [conversationHistory, setConversationHistory] = useState<Array<{sender: string, text: string, timestamp: string}>>([])
+
   useEffect(() => {
     setIsClient(true)
   }, [])
@@ -158,6 +161,16 @@ export default function ChatPage() {
 
     const currentInputText = inputText
     
+    // 🧠 FIXED: Add user message to conversation history BEFORE API call
+    const userHistoryMessage = {
+      sender: "user",
+      text: currentInputText,
+      timestamp: new Date().toISOString()
+    }
+    
+    const updatedHistory = [...conversationHistory, userHistoryMessage].slice(-20)
+    setConversationHistory(updatedHistory)
+    
     setMessages((prev) => [...prev, userMessage])
     setVentCount(newVentCount)
     setTreesPlanted(newTreesPlanted)
@@ -167,6 +180,8 @@ export default function ChatPage() {
     keepInputFocus()
 
     try {
+      console.log('📤 Sending conversation history:', updatedHistory.length, 'messages')
+      
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -174,7 +189,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           message: currentInputText,
-          conversationHistory: messages.slice(-6)
+          conversationHistory: updatedHistory.slice(-6) // 🧠 Send updated history including current message
         }),
       })
 
@@ -207,6 +222,16 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, aiResponse])
       setIsLoading(false)
       
+      // 🧠 FIXED: Add AI response to conversation history with proper timing
+      const aiHistoryMessage = {
+        sender: "assistant",
+        text: data.response,
+        timestamp: new Date().toISOString()
+      }
+      
+      setConversationHistory(prev => [...prev, aiHistoryMessage].slice(-20))
+      console.log('🧠 Total conversation history:', updatedHistory.length + 1, 'messages')
+      
       await simulateTyping(data.response, aiMessageId)
       
     } catch (error) {
@@ -226,13 +251,21 @@ export default function ChatPage() {
         isTyping: true,
       }
       
+      const fallbackText = "I'm having some technical difficulties, but I want you to know - I'm here for you. Your feelings are valid, and you're not alone. What you're going through matters. 💚"
+      
       setMessages((prev) => [...prev, fallbackResponse])
       setIsLoading(false)
       
-      await simulateTyping(
-        "I'm having some technical difficulties, but I want you to know - I'm here for you. Your feelings are valid, and you're not alone. What you're going through matters. 💚", 
-        fallbackMessageId
-      )
+      // 🧠 FIXED: Add fallback to conversation history
+      const fallbackHistoryMessage = {
+        sender: "assistant",
+        text: fallbackText,
+        timestamp: new Date().toISOString()
+      }
+      
+      setConversationHistory(prev => [...prev, fallbackHistoryMessage].slice(-20))
+      
+      await simulateTyping(fallbackText, fallbackMessageId)
     } finally {
       requestInProgress.current = false
       keepInputFocus()
