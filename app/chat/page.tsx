@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Send, Mic, MicOff, Leaf, Heart, AlertTriangle } from "lucide-react"
+import { Send, Mic, MicOff, Leaf, Heart, AlertTriangle, Phone } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 
@@ -16,6 +16,16 @@ interface Message {
   timestamp: Date
   mood?: "happy" | "sad" | "anxious" | "angry" | "neutral"
   plantProgress?: number
+  needsHelp?: boolean
+}
+
+// Fix hydration issue with consistent time formatting
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('en-US', { 
+    hour: "2-digit", 
+    minute: "2-digit",
+    hour12: false // Use 24-hour format to avoid AM/PM differences
+  })
 }
 
 export default function ChatPage() {
@@ -34,7 +44,14 @@ export default function ChatPage() {
   const [ventCount, setVentCount] = useState(7)
   const [treesPlanted, setTreesPlanted] = useState(2)
   const [isLoading, setIsLoading] = useState(false)
+  const [showEmergencyHelp, setShowEmergencyHelp] = useState(false)
+  const [isClient, setIsClient] = useState(false) // Fix hydration
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Fix hydration by ensuring client-side rendering for timestamps
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -107,24 +124,34 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMessage])
     setVentCount(newVentCount)
     setTreesPlanted(newTreesPlanted)
+    
+    const currentInputText = inputText; // Store current input
     setInputText("")
     setIsLoading(true)
 
     try {
-      // Call the API
+      // Call the CHAT API, not mood API
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: inputText,
-          mood: userMood,
-          ventCount: newVentCount,
+          message: currentInputText, // Use stored input text
+          conversationHistory: messages.slice(-6) // Send last 6 messages for context
         }),
       })
 
       const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send message');
+      }
+
+      // Show emergency help if needed
+      if (data.needsHelp) {
+        setShowEmergencyHelp(true)
+      }
 
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
@@ -135,6 +162,25 @@ export default function ChatPage() {
       }
 
       setMessages((prev) => [...prev, aiResponse])
+      
+      // Optional: Log mood data separately
+      try {
+        await fetch("/api/mood", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: currentInputText,
+            mood: data.mood,
+            confidence: data.confidence,
+            timestamp: new Date().toISOString(),
+          }),
+        })
+      } catch (moodError) {
+        console.log('Mood logging failed (non-critical):', moodError);
+      }
+      
     } catch (error) {
       console.error("Error sending message:", error)
       toast({
@@ -178,6 +224,10 @@ export default function ChatPage() {
     } catch (error) {
       console.error("Error triggering SOS:", error)
     }
+  }
+
+  const handleEmergencyHelp = () => {
+    window.open('tel:988', '_blank'); // US Crisis Lifeline
   }
 
   const getMoodColor = (mood?: string) => {
@@ -238,6 +288,19 @@ export default function ChatPage() {
               <Leaf className="w-3 h-3 mr-1" />
               {treesPlanted} trees planted
             </Badge>
+            
+            {showEmergencyHelp && (
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={handleEmergencyHelp} 
+                className="bg-red-500 hover:bg-red-600 animate-pulse"
+              >
+                <Phone className="w-4 h-4 mr-1" />
+                Crisis Help
+              </Button>
+            )}
+            
             <Button variant="destructive" size="sm" onClick={handleSOS} className="bg-red-500 hover:bg-red-600">
               <AlertTriangle className="w-4 h-4 mr-1" />
               SOS
@@ -272,8 +335,9 @@ export default function ChatPage() {
                           {message.text}
                         </p>
                         <div className="flex items-center justify-between mt-2">
+                          {/* Fixed timestamp rendering */}
                           <span className={`text-xs ${message.sender === "user" ? "text-white/70" : "text-gray-500"}`}>
-                            {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {isClient ? formatTime(message.timestamp) : '--:--'}
                           </span>
                           {message.mood && message.sender === "user" && (
                             <span className="text-xs bg-white/20 px-2 py-1 rounded-full text-white/90">
