@@ -209,7 +209,7 @@ export default function HomePage() {
             <Button
               variant="outline"
               size="lg"
-              className="border-white text-white hover:bg-white/10 text-lg px-8 py-6 rounded-full"
+              className="border-white text-green-600 hover:bg-white/10 text-lg px-8 py-6 rounded-full"
             >
               Learn More
             </Button>
