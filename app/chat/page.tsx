@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -17,6 +17,8 @@ interface Message {
   mood?: "happy" | "sad" | "anxious" | "angry" | "neutral"
   plantProgress?: number
   needsHelp?: boolean
+  category?: string
+  isTyping?: boolean
 }
 
 // Fix hydration issue with consistent time formatting
@@ -28,12 +30,15 @@ function formatTime(date: Date): string {
   })
 }
 
+// Helper function to simulate typing delay
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
 export default function ChatPage() {
   const { toast } = useToast()
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
-      text: "Hey there! 👋 I'm your AI companion. Feel free to vent, share what's on your mind, or just chat. Every 10 messages you send helps plant a tree! 🌱 What's going on today?",
+      text: "Hey there! 👋 I'm your AI companion - part therapist, part friend, part life coach. I'm here to listen, support, and help you through anything you're facing. Every message you send helps plant a real tree! 🌱 What's on your mind today?",
       sender: "ai",
       timestamp: new Date(),
       mood: "happy",
@@ -46,57 +51,91 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showEmergencyHelp, setShowEmergencyHelp] = useState(false)
   const [isClient, setIsClient] = useState(false) // Fix hydration
+  const [typingMessageId, setTypingMessageId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null) // Add input ref
+  const requestInProgress = useRef(false) // Prevent double requests
+  const typingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Fix hydration by ensuring client-side rendering for timestamps
   useEffect(() => {
     setIsClient(true)
   }, [])
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages])
+  }, [messages, scrollToBottom])
+
+  // Keep focus on input after sending message
+  const keepInputFocus = useCallback(() => {
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus()
+      }
+    }, 100)
+  }, [])
 
   const detectMood = (text: string): "happy" | "sad" | "anxious" | "angry" | "neutral" => {
     const lowerText = text.toLowerCase()
-    if (
-      lowerText.includes("happy") ||
-      lowerText.includes("great") ||
-      lowerText.includes("awesome") ||
-      lowerText.includes("good")
-    )
+    if (lowerText.includes("happy") || lowerText.includes("great") || lowerText.includes("awesome") || lowerText.includes("good") || lowerText.includes("love") || lowerText.includes("excited"))
       return "happy"
-    if (
-      lowerText.includes("sad") ||
-      lowerText.includes("depressed") ||
-      lowerText.includes("down") ||
-      lowerText.includes("hurt")
-    )
+    if (lowerText.includes("sad") || lowerText.includes("depressed") || lowerText.includes("down") || lowerText.includes("hurt") || lowerText.includes("cry"))
       return "sad"
-    if (
-      lowerText.includes("anxious") ||
-      lowerText.includes("worried") ||
-      lowerText.includes("nervous") ||
-      lowerText.includes("stress")
-    )
+    if (lowerText.includes("anxious") || lowerText.includes("worried") || lowerText.includes("nervous") || lowerText.includes("stress") || lowerText.includes("scared"))
       return "anxious"
-    if (
-      lowerText.includes("angry") ||
-      lowerText.includes("mad") ||
-      lowerText.includes("frustrated") ||
-      lowerText.includes("annoyed")
-    )
+    if (lowerText.includes("angry") || lowerText.includes("mad") || lowerText.includes("frustrated") || lowerText.includes("annoyed") || lowerText.includes("hate"))
       return "angry"
     return "neutral"
   }
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim() || isLoading) return
+  // Word-by-word typing simulation
+  const simulateTyping = async (fullText: string, messageId: string) => {
+  const words = fullText.split(' ')
+  let currentText = ''
+  
+  setTypingMessageId(messageId)
 
+  for (let i = 0; i < words.length; i++) {
+    currentText += (i > 0 ? ' ' : '') + words[i]
+
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, text: currentText, isTyping: true }
+          : msg
+      )
+    )
+
+    const delay = words[i].length < 3 ? 10 :
+                  words[i].length < 6 ? 30 :
+                  45
+
+    const extraDelay = /[.!?]/.test(words[i]) ? 150 : 0
+
+    await sleep(delay + extraDelay)
+    scrollToBottom()
+  }
+
+  // End of message
+  setMessages(prev =>
+    prev.map(msg =>
+      msg.id === messageId
+        ? { ...msg, isTyping: false }
+        : msg
+    )
+  )
+  setTypingMessageId(null)
+}
+
+
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || isLoading || requestInProgress.current) return
+
+    requestInProgress.current = true // Prevent double requests
     const userMood = detectMood(inputText)
     const newVentCount = ventCount + 1
     let newTreesPlanted = treesPlanted
@@ -108,12 +147,12 @@ export default function ChatPage() {
       plantProgress = 0
       toast({
         title: "🌱 Tree Planted!",
-        description: `Congrats! Your venting just planted tree #${newTreesPlanted}. You're healing yourself AND the planet!`,
+        description: `Amazing! Your venting just planted tree #${newTreesPlanted}. You're healing yourself AND the planet!`,
       })
     }
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}`,
       text: inputText,
       sender: "user",
       timestamp: new Date(),
@@ -121,13 +160,17 @@ export default function ChatPage() {
       plantProgress,
     }
 
+    const currentInputText = inputText
+    
+    // Update UI immediately
     setMessages((prev) => [...prev, userMessage])
     setVentCount(newVentCount)
     setTreesPlanted(newTreesPlanted)
-    
-    const currentInputText = inputText; // Store current input
-    setInputText("")
+    setInputText("") // Clear input
     setIsLoading(true)
+    
+    // Keep focus on input field
+    keepInputFocus()
 
     try {
       // Call the CHAT API, not mood API
@@ -137,8 +180,8 @@ export default function ChatPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: currentInputText, // Use stored input text
-          conversationHistory: messages.slice(-6) // Send last 6 messages for context
+          message: currentInputText,
+          conversationHistory: messages.slice(-6)
         }),
       })
 
@@ -151,45 +194,67 @@ export default function ChatPage() {
       // Show emergency help if needed
       if (data.needsHelp) {
         setShowEmergencyHelp(true)
+        toast({
+          title: "🚨 Emergency Support Available",
+          description: "I'm concerned about you. Please consider reaching out for help.",
+          variant: "destructive",
+        })
       }
 
+      // Create AI message with empty text initially
+      const aiMessageId = `ai-${Date.now()}`
       const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        text: data.response,
+        id: aiMessageId,
+        text: "", // Start empty
         sender: "ai",
         timestamp: new Date(),
         mood: "neutral",
+        category: data.category,
+        isTyping: true,
       }
 
       setMessages((prev) => [...prev, aiResponse])
+      setIsLoading(false)
       
-      // Optional: Log mood data separately
-      try {
-        await fetch("/api/mood", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: currentInputText,
-            mood: data.mood,
-            confidence: data.confidence,
-            timestamp: new Date().toISOString(),
-          }),
-        })
-      } catch (moodError) {
-        console.log('Mood logging failed (non-critical):', moodError);
-      }
+      // Start word-by-word typing simulation
+      await simulateTyping(data.response, aiMessageId)
       
     } catch (error) {
       console.error("Error sending message:", error)
       toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-        variant: "destructive",
+        title: "Connection Issue",
+        description: "I'm still here for you! Let me try to respond...",
       })
-    } finally {
+      
+      const fallbackMessageId = `fallback-${Date.now()}`
+      const fallbackResponse: Message = {
+        id: fallbackMessageId,
+        text: "",
+        sender: "ai",
+        timestamp: new Date(),
+        mood: "neutral",
+        isTyping: true,
+      }
+      
+      setMessages((prev) => [...prev, fallbackResponse])
       setIsLoading(false)
+      
+      // Simulate typing for fallback
+      await simulateTyping(
+        "I'm having some technical difficulties, but I want you to know - I'm here for you. Your feelings are valid, and you're not alone. What you're going through matters. 💚", 
+        fallbackMessageId
+      )
+    } finally {
+      requestInProgress.current = false // Reset request lock
+      keepInputFocus() // Ensure focus returns to input
+    }
+  }
+
+  // Handle Enter key
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      handleSendMessage()
     }
   }
 
@@ -198,7 +263,7 @@ export default function ChatPage() {
     if (!isRecording) {
       toast({
         title: "🎤 Voice Recording",
-        description: "Voice recording would start here! (Feature coming soon)",
+        description: "Voice feature coming soon! For now, type your thoughts.",
       })
     }
   }
@@ -227,36 +292,26 @@ export default function ChatPage() {
   }
 
   const handleEmergencyHelp = () => {
-    window.open('tel:988', '_blank'); // US Crisis Lifeline
+    window.open('tel:988', '_blank') // US Crisis Lifeline
   }
 
   const getMoodColor = (mood?: string) => {
     switch (mood) {
-      case "happy":
-        return "bg-yellow-100 border-yellow-300"
-      case "sad":
-        return "bg-blue-100 border-blue-300"
-      case "anxious":
-        return "bg-purple-100 border-purple-300"
-      case "angry":
-        return "bg-red-100 border-red-300"
-      default:
-        return "bg-gray-100 border-gray-300"
+      case "happy": return "bg-yellow-100 border-yellow-300"
+      case "sad": return "bg-blue-100 border-blue-300"
+      case "anxious": return "bg-purple-100 border-purple-300"
+      case "angry": return "bg-red-100 border-red-300"
+      default: return "bg-gray-100 border-gray-300"
     }
   }
 
   const getMoodEmoji = (mood?: string) => {
     switch (mood) {
-      case "happy":
-        return "😊"
-      case "sad":
-        return "😢"
-      case "anxious":
-        return "😰"
-      case "angry":
-        return "😠"
-      default:
-        return "😐"
+      case "happy": return "😊"
+      case "sad": return "😢"
+      case "anxious": return "😰"
+      case "angry": return "😠"
+      default: return "😐"
     }
   }
 
@@ -320,7 +375,7 @@ export default function ChatPage() {
                   <Card
                     className={`p-4 ${
                       message.sender === "user"
-                        ? `bg-gradient-to-r from-green-500 to-blue-500 text-white ${getMoodColor(message.mood)}`
+                        ? "bg-gradient-to-r from-green-500 to-blue-500 text-white"
                         : "bg-white border-gray-200"
                     }`}
                   >
@@ -331,11 +386,20 @@ export default function ChatPage() {
                         </div>
                       )}
                       <div className="flex-1">
-                        <p className={`${message.sender === "user" ? "text-white" : "text-gray-800"}`}>
-                          {message.text}
-                        </p>
+                        <div className={`${message.sender === "user" ? "text-white" : "text-gray-800"}`}>
+                          {/* Preserve line breaks in AI messages */}
+                          {message.sender === "ai" ? (
+                            <div className="whitespace-pre-line">
+                              {message.text}
+                              {message.isTyping && (
+                                <span className="inline-block w-2 h-4 bg-gray-400 ml-1 animate-pulse" />
+                              )}
+                            </div>
+                          ) : (
+                            <p>{message.text}</p>
+                          )}
+                        </div>
                         <div className="flex items-center justify-between mt-2">
-                          {/* Fixed timestamp rendering */}
                           <span className={`text-xs ${message.sender === "user" ? "text-white/70" : "text-gray-500"}`}>
                             {isClient ? formatTime(message.timestamp) : '--:--'}
                           </span>
@@ -381,6 +445,7 @@ export default function ChatPage() {
                           style={{ animationDelay: "0.2s" }}
                         ></div>
                       </div>
+                      <span className="text-sm text-gray-500">VentBot is thinking deeply...</span>
                     </div>
                   </Card>
                 </div>
@@ -394,12 +459,14 @@ export default function ChatPage() {
             <div className="flex items-center space-x-4">
               <div className="flex-1 relative">
                 <Input
+                  ref={inputRef} // Add ref for focus management
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="What's on your mind? Every message helps plant trees! 🌱"
+                  placeholder="Share anything - stress, dreams, fears, joy, hobbies... I'm here for it all! 🌱"
                   className="pr-12 py-6 text-lg rounded-full border-green-200 focus:border-green-400"
-                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                  disabled={isLoading}
+                  onKeyDown={handleKeyPress} // Use onKeyDown instead of onKeyPress
+                  disabled={isLoading || typingMessageId !== null}
+                  autoFocus // Auto focus on page load
                 />
                 <Button
                   size="sm"
@@ -416,7 +483,7 @@ export default function ChatPage() {
               </div>
               <Button
                 onClick={handleSendMessage}
-                disabled={!inputText.trim() || isLoading}
+                disabled={!inputText.trim() || isLoading || typingMessageId !== null}
                 className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 rounded-full px-8 py-6"
               >
                 <Send className="w-5 h-5" />
@@ -424,9 +491,9 @@ export default function ChatPage() {
             </div>
 
             <div className="mt-4 flex items-center justify-center space-x-6 text-sm text-gray-600">
-              <span>💬 AI Mood Detection Active</span>
+              <span>🧠 VentBot Typing...</span>
               <span>🌱 {10 - (ventCount % 10)} vents until next tree</span>
-              <span>🔒 100% Anonymous</span>
+              <span>🔒 100% Anonymous & Safe</span>
             </div>
           </div>
         </div>

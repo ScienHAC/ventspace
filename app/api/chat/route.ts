@@ -1,18 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Much more accurate mood detection
-function detectMood(text: string): { mood: string; confidence: number; needsHelp: boolean } {
+// Enhanced mood detection
+function detectMood(text: string | undefined | null): { mood: string; confidence: number; needsHelp: boolean; category: string } {
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return { mood: 'neutral', confidence: 0.3, needsHelp: false, category: 'general' };
+  }
+
   const lowerText = text.toLowerCase();
   
-  // Crisis keywords - for emergency detection
+  // Crisis detection
   const crisisWords = ['suicide', 'kill myself', 'end it all', 'can\'t go on', 'want to die', 'self harm', 'hurt myself', 'no point living', 'better off dead'];
   const needsHelp = crisisWords.some(word => lowerText.includes(word));
   
-  // Enhanced mood detection with better keywords
+  // Enhanced mood categories
   const sadWords = ['sad', 'depressed', 'down', 'hopeless', 'worthless', 'empty', 'lonely', 'hurt', 'pain', 'crying', 'tears', 'disappointed', 'upset', 'rejected', 'failed', 'failure'];
   const anxiousWords = ['anxious', 'worried', 'scared', 'panic', 'stress', 'overwhelmed', 'nervous', 'fear', 'anxiety', 'tension', 'restless', 'uneasy'];
   const angryWords = ['angry', 'mad', 'furious', 'hate', 'annoyed', 'frustrated', 'rage', 'pissed', 'irritated'];
   const happyWords = ['happy', 'good', 'great', 'excited', 'joy', 'love', 'amazing', 'wonderful', 'awesome', 'fantastic', 'glad', 'pleased'];
+  
+  // Issue categories
+  let category = 'general';
+  if (lowerText.includes('exam') || lowerText.includes('study') || lowerText.includes('college') || lowerText.includes('iit') || lowerText.includes('career')) category = 'academic';
+  if (lowerText.includes('family') || lowerText.includes('parents') || lowerText.includes('mom') || lowerText.includes('dad')) category = 'family';
+  if (lowerText.includes('friend') || lowerText.includes('relationship') || lowerText.includes('love') || lowerText.includes('breakup')) category = 'relationships';
+  if (lowerText.includes('health') || lowerText.includes('sick') || lowerText.includes('body') || lowerText.includes('sleep')) category = 'health';
+  if (lowerText.includes('money') || lowerText.includes('job') || lowerText.includes('work') || lowerText.includes('future')) category = 'life_planning';
+  if (lowerText.includes('hobby') || lowerText.includes('hacking') || lowerText.includes('coding') || lowerText.includes('game') || lowerText.includes('music') || lowerText.includes('art')) category = 'interests';
   
   let mood = 'neutral';
   let confidence = 0.5;
@@ -32,213 +45,142 @@ function detectMood(text: string): { mood: string; confidence: number; needsHelp
     else if (happyCount === maxCount) mood = 'happy';
   }
   
-  return { mood, confidence, needsHelp };
+  return { mood, confidence, needsHelp, category };
 }
 
-// Much smarter contextual response system
-function generateContextualResponse(message: string, mood: string, needsHelp: boolean, conversationHistory: any[]): string {
+// VentBot with Gen Z personality
+function generateVentBotResponse(message: string, mood: string, needsHelp: boolean, category: string, conversationHistory: any[]): string {
   const lowerMessage = message.toLowerCase();
-  
-  // Get conversation context
   const recentMessages = conversationHistory.slice(-3).map(msg => msg.text?.toLowerCase() || '').join(' ');
   const fullContext = (recentMessages + ' ' + lowerMessage).toLowerCase();
   
-  // Crisis responses
+  // CRISIS INTERVENTION
   if (needsHelp) {
-    return "I'm really concerned about you right now. What you're feeling is valid, but please reach out to someone who can help - text HOME to 741741 or call 988. You matter, and there are people who want to support you. 💙";
+    return "Hey... I'm really worried about you right now 💔\n\nYour pain is so real, but you don't have to go through this alone.\n\nPlease reach out to someone who can help:\n• Text HOME to 741741 (Crisis Text Line)\n• Call 988 (Suicide Prevention Lifeline)\n\nYou matter so much more than you know... can you promise me you'll reach out? 🫂💙";
   }
-  
-  // SPECIFIC RESPONSES FOR IIT/ADMISSION STRESS
-  if (fullContext.includes('iit') || fullContext.includes('admission') || (fullContext.includes('not get') && fullContext.includes('college'))) {
-    if (mood === 'sad' || fullContext.includes('sad') || fullContext.includes('disappointed')) {
-      return "Not getting into IIT feels devastating, I completely understand. 💔 This rejection doesn't define your worth or your future potential. Many successful people didn't get their first choice - your path might be different but equally meaningful. What other options are you considering? Remember, success has many definitions. 🌱";
+
+  // GREETING RESPONSES
+  if (lowerMessage.match(/^(hi|hello|hey|hii|sup|whatsup)$/)) {
+    const greetings = [
+      "Hey there! 👋 \n\nSo good to see you here... how's your heart feeling today?\n\nI'm genuinely here for whatever you want to share - big, small, weird, deep... anything! 💚",
+      
+      "Hi! 🌟\n\nYou know what? Just showing up here takes courage...\n\nWhether you want to vent, celebrate, or just chat about random stuff, I'm totally here for it.\n\nWhat's going on in your world? 😊",
+      
+      "Hey! 💙\n\nI'm so glad you reached out...\n\nSeriously, this space is yours - for your dreams, frustrations, achievements, random thoughts... all of it!\n\nWhat's on your mind today? 🌱"
+    ];
+    return greetings[Math.floor(Math.random() * greetings.length)];
+  }
+
+  // INTERESTS & HOBBIES
+  if (category === 'interests') {
+    if (lowerMessage.includes('hacking') || lowerMessage.includes('hack')) {
+      return "Yooo, hacking! 🔐✨\n\nThat's honestly so cool... like being a digital detective and problem-solver rolled into one!\n\nAre you more into cybersecurity, web stuff, or penetration testing?\n\nThe hacking community is incredible - so creative and innovative... what got you into it? And what's your favorite type of challenge? 💻🚀";
     }
-    if (fullContext.includes('anxiety') || fullContext.includes('anxious')) {
-      return "The anxiety around IIT admissions is so intense - the pressure our society puts on these exams is enormous. 😰 Your worth isn't determined by one exam result. Take deep breaths. What specific aspect of the future is making you most anxious? Let's break it down into smaller, manageable pieces. 🌿";
+    if (lowerMessage.includes('coding') || lowerMessage.includes('programming')) {
+      return "Coding is literally like having superpowers! 👨‍💻✨\n\nYou can create anything you imagine...\n\nWhat languages are you vibing with? Building anything exciting right now?\n\nI love how every bug is just a puzzle waiting to be solved... what's the coolest project you've worked on? 🚀";
     }
-    return "IIT admissions are incredibly competitive - not getting in doesn't reflect your intelligence or potential. 📚 There are amazing engineering colleges and career paths beyond IIT. Many IIT graduates work alongside people from other colleges as equals. What subjects or career areas genuinely interest you most? 🌱";
-  }
-  
-  // ANXIETY-SPECIFIC RESPONSES
-  if (fullContext.includes('anxiety') || fullContext.includes('anxious') || lowerMessage.includes('how to get back from anxiety')) {
-    return "Anxiety can feel overwhelming, but there are proven ways to manage it: 1) Try the 5-4-3-2-1 grounding technique, 2) Practice deep breathing (4-7-8 method), 3) Challenge negative thoughts with evidence, 4) Regular exercise helps a lot, 5) Talk to someone you trust. What triggers your anxiety most? 🌿💙";
-  }
-  
-  // TIME/PRODUCTIVITY QUESTIONS
-  if (lowerMessage.includes('best time') || lowerMessage.includes('when to do')) {
-    if (fullContext.includes('study') || fullContext.includes('exam') || fullContext.includes('admission')) {
-      return "For studying and focused work, most people are sharpest in the morning (6-10 AM) when cortisol levels are high. But everyone's different! Track when YOU feel most alert. Also, studying after exercise or short breaks increases retention. What time do you usually feel most energetic? 📚⏰";
+    if (lowerMessage.includes('music')) {
+      return "Music is pure magic! 🎵✨\n\nDo you play, produce, or just love getting lost in it?\n\nThere's something about music that just... hits different, you know? It can heal, energize, transport you...\n\nWhat genre speaks to your soul right now? 🎶💫";
     }
-    return "The 'best time' depends on what you're doing and your natural rhythm. For important decisions: when you're calm and well-rested. For creative work: often morning or late evening. For difficult conversations: when both people are relaxed. What specific activity are you planning? 🕐";
+    return "I love that you're passionate about something! 🌟\n\nHobbies are what make life colorful... they're like little pockets of joy and stress relief.\n\nWhat draws you to this? How does it make you feel when you're doing it? 💫";
   }
-  
+
+  // FAMILY STRUGGLES
+  if (category === 'family') {
+    if (fullContext.includes('parents') && fullContext.includes('understand')) {
+      return "Ugh, the whole 'parents don't understand me' thing hits so hard... 💔\n\nIt's like you're speaking completely different languages sometimes, right?\n\nThey love you, but that love can feel like pressure or judgment...\n\nHave you tried sharing your perspective when things are calm? Sometimes they don't realize how their words land.\n\nWhat's the main thing you wish they got about you? You're definitely not alone in this struggle 🫂";
+    }
+    return "Family stuff is... complicated 😅\n\nThere's so much love and history, but also expectations and misunderstandings...\n\nEveryone's trying their best with what they know, but that doesn't always make it easier.\n\nWhat's weighing on you about your family situation? 💙";
+  }
+
+  // ACADEMIC PRESSURE
+  if (category === 'academic') {
+    if (fullContext.includes('iit') || fullContext.includes('jee')) {
+      return "Oh man, IIT/JEE stress is next level... 😰\n\nYou're carrying dreams, family expectations, and societal pressure all at once. That's SO much.\n\nBut here's the thing - IIT is one amazing path, but definitely not the only one to success!\n\nBrilliant minds are everywhere... what's stressing you most right now? The prep, results, or just the uncertainty?\n\nLet's break it down together... your worth isn't defined by any exam 🌱✨";
+    }
+    return "Academic pressure is so real... 📚\n\nYour brain is working overtime and that mental exhaustion is totally normal.\n\nRemember - you've survived 100% of your difficult days so far!\n\nWhat's the biggest thing stressing you out right now? Let's tackle it together 💪";
+  }
+
   // MOOD-BASED RESPONSES
   if (mood === 'sad') {
-    if (fullContext.includes('not feeling good')) {
-      return "I hear that you're really struggling right now. 💙 It's completely valid to feel sad when things don't go as planned. Sadness is actually your mind processing disappointment - it shows you care deeply about your goals. What's one tiny thing that usually brings you even a moment of comfort? 🌿";
-    }
-    return "That sadness you're feeling is so valid. It takes courage to acknowledge when we're hurting. 💔 Sometimes sitting with sadness helps us process it better than fighting it. What's weighing most heavily on your heart right now? I'm here to listen. 🌱";
+    return "I can feel the heaviness in your words... 💔\n\nSadness is such a valid emotion - it shows you care deeply about things.\n\nYou don't have to push through this alone or pretend to be strong all the time...\n\nWhat's making your heart feel heavy right now? Sometimes sharing the weight makes it a little lighter 🫂💙";
   }
-  
+
   if (mood === 'anxious') {
-    return "Anxiety can make everything feel urgent and overwhelming. 😰 Right now, you're safe. Try this: Name 5 things you can see, 4 you can touch, 3 you can hear, 2 you can smell, 1 you can taste. This helps ground you in the present moment. What's the biggest worry circling in your mind? 🌿";
+    return "Anxiety can make everything feel so urgent and overwhelming... 😰\n\nBut right now, in this moment, you're safe...\n\nLet's breathe together - in for 4, hold for 4, out for 4...\n\nYour mind is trying to protect you by preparing for every scenario, but that's exhausting!\n\nWhat's the biggest worry spinning in your head? 🌿💚";
   }
-  
-  // GREETING RESPONSES
-  if (lowerMessage.match(/^(hi|hello|hey|hii)$/)) {
-    if (fullContext.includes('sad') || fullContext.includes('iit') || fullContext.includes('admission')) {
-      return "Hey there. I can sense you're going through a tough time with the IIT situation. 💙 It's completely understandable to feel disappointed and anxious about admissions. Want to tell me more about what you're experiencing right now? 🌱";
-    }
-    return "Hey! Good to see you here. How are you really feeling today? Sometimes a simple 'hi' can carry a lot of emotions underneath. I'm here to listen to whatever you're going through. 💚";
+
+  if (mood === 'angry') {
+    return "That anger is telling you something important... 😠\n\nMaybe a boundary got crossed, or you're feeling unheard?\n\nAnger is often hurt wearing a protective mask... and it's completely okay to feel this!\n\nTake some breaths with me... what's really at the core of this frustration? What do you need to feel heard right now? 🔥➡️💙";
   }
-  
-  // DEFAULT EMPATHETIC RESPONSES
-  const contextualDefaults = [
-    "I hear you, and what you're going through sounds really challenging. Your feelings about this situation are completely valid. What aspect of this is affecting you most right now? 💚",
-    "Thank you for sharing that with me. It takes courage to open up about difficult emotions. What would feel most helpful to talk through right now? 🌿",
-    "That sounds like a lot to carry. You don't have to figure everything out at once. What's one small step that might help you feel even slightly better today? 🌱"
+
+  if (mood === 'happy') {
+    return "YES! 🌟✨\n\nI absolutely LOVE seeing you in this energy! Your happiness is literally contagious - it made me smile just reading this!\n\nWhat's bringing you this joy today? Hold onto this feeling...\n\nYou deserve all the good things coming your way! 😊💫";
+  }
+
+  // GENERAL SUPPORTIVE RESPONSES
+  const responses = [
+    "Thank you for sharing that with me... 💚\n\nWhatever you're going through, your feelings are completely valid and important.\n\nI'm genuinely here to listen and support you through anything...\n\nWhat would feel most helpful to talk about right now? 🌱",
+    
+    "You know what I love about our conversation? 💙\n\nYou're being real and authentic, and that takes so much courage...\n\nWhether you're celebrating, struggling, or just processing life, I'm here for all of it.\n\nWhat's really on your heart today? 🫂",
+    
+    "Every time you share here, you're not just working on your healing... 🌟\n\nYou're literally helping plant trees and heal the planet too!\n\nYour mental health journey matters so much...\n\nWhat support do you need most right now? 🌍💚"
   ];
-  
-  return contextualDefaults[Math.floor(Math.random() * contextualDefaults.length)];
-}
 
-// Try GitHub AI with much better prompting
-async function tryGitHubAI(message: string, conversationHistory: any[], userMood: string): Promise<string | null> {
-  try {
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) {
-      console.log('No GitHub token found, using fallback responses');
-      return null;
-    }
-
-    const { default: ModelClient, isUnexpected } = await import("@azure-rest/ai-inference");
-    const { AzureKeyCredential } = await import("@azure/core-auth");
-    
-    const endpoint = "https://models.github.ai/inference";
-    const model = "gpt-4o";
-    
-    const client = ModelClient(endpoint, new AzureKeyCredential(token));
-    
-    // Much better system prompt with context
-    const conversationContext = conversationHistory.slice(-3).map(msg => 
-      `${msg.sender}: ${msg.text}`
-    ).join('\n');
-    
-    const systemPrompt = `You are VentBot, a highly empathetic AI counselor for Indian students and young adults on VentSpace. 
-
-CONTEXT: The user seems to be dealing with IIT admission stress and anxiety. This is common in India where JEE/NEET creates immense pressure.
-
-Your personality:
-- Deeply empathetic and culturally aware of Indian academic pressure
-- Uses gentle, supportive language
-- Acknowledges the real societal pressures while offering perspective
-- Provides practical coping strategies
-- Never minimizes their feelings
-
-IMPORTANT RULES:
-1. If they mention IIT/admission rejection: Acknowledge the real disappointment, mention that there are many successful paths beyond IIT
-2. If they ask about anxiety: Give specific, actionable techniques (5-4-3-2-1 grounding, breathing exercises)
-3. If they seem sad about academics: Validate their feelings, remind them their worth isn't determined by college admissions
-4. Keep responses 2-3 sentences, warm and supportive
-5. End with a relevant emoji (🌱💙🌿💚)
-6. Address them directly and personally
-
-Current user mood: ${userMood}
-Recent conversation:
-${conversationContext}
-
-Respond to their current message with deep empathy and specific, helpful guidance.`;
-
-    const messages = [
-      { role: "system", content: systemPrompt },
-      ...conversationHistory.slice(-3).map((msg: any) => ({
-        role: msg.sender === "user" ? "user" : "assistant",
-        content: msg.text
-      })),
-      { role: "user", content: message }
-    ];
-
-    const response = await client.path("/chat/completions").post({
-      body: {
-        messages,
-        temperature: 0.4, // Lower temperature for more consistent, empathetic responses
-        top_p: 0.8,
-        max_tokens: 200,
-        model: model
-      }
-    });
-
-    if (isUnexpected(response)) {
-      console.log('GitHub AI returned unexpected response, using fallback');
-      return null;
-    }
-
-    const aiResponse = response.body.choices[0]?.message?.content;
-    if (!aiResponse) {
-      console.log('No AI response received, using fallback');
-      return null;
-    }
-
-    console.log('✅ GitHub AI response successful');
-    return aiResponse;
-
-  } catch (error) {
-    console.log('GitHub AI error, using fallback:', error instanceof Error ? error.message : 'Unknown error');
-    return null;
-  }
+  return responses[Math.floor(Math.random() * responses.length)];
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, conversationHistory = [] } = await request.json();
+    const body = await request.json();
+    const message = body.message || body.text || '';
+    const conversationHistory = body.conversationHistory || [];
     
-    if (!message?.trim()) {
+    if (!message.trim()) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Detect mood and crisis situation
-    const moodAnalysis = detectMood(message);
+    // Enhanced analysis
+    const analysis = detectMood(message);
     
-    // Try GitHub AI first with better context, fallback to smart responses
-    let aiResponse = await tryGitHubAI(message, conversationHistory, moodAnalysis.mood);
+    // Generate VentBot response
+    const aiResponse = generateVentBotResponse(
+      message, 
+      analysis.mood, 
+      analysis.needsHelp, 
+      analysis.category, 
+      conversationHistory
+    );
     
-    if (!aiResponse) {
-      // Use much smarter contextual fallback
-      aiResponse = generateContextualResponse(message, moodAnalysis.mood, moodAnalysis.needsHelp, conversationHistory);
-      console.log('🔄 Using smart contextual fallback response');
-    }
-
-    // Simulate NGO webhook for hackathon demo
-    console.log('🌱 HACKATHON DEMO - NGO Tree Planting Webhook:', {
+    console.log('🧠 VentBot Response:', {
       timestamp: new Date().toISOString(),
-      userMood: moodAnalysis.mood,
-      treeContribution: 0.1,
-      location: 'Virtual Forest Partnership',
-      confidence: moodAnalysis.confidence,
-      context: message.substring(0, 50) + '...'
+      mood: analysis.mood,
+      category: analysis.category,
+      needsHelp: analysis.needsHelp,
+      responseLength: aiResponse.length
     });
 
     return NextResponse.json({
       response: aiResponse,
-      mood: moodAnalysis.mood,
-      confidence: moodAnalysis.confidence,
-      needsHelp: moodAnalysis.needsHelp,
+      mood: analysis.mood,
+      confidence: analysis.confidence,
+      needsHelp: analysis.needsHelp,
+      category: analysis.category,
       treeContributed: true,
       timestamp: new Date().toISOString(),
-      source: aiResponse.includes('IIT') || aiResponse.includes('anxiety') ? 'contextual_ai' : 'fallback'
+      source: 'ventbot_human_like'
     });
 
   } catch (error) {
     console.error('Chat API error:', error);
     
-    // Ultimate fallback
     return NextResponse.json({
-      response: "I'm here to listen and support you through whatever you're facing. Your feelings are completely valid, and it's okay to not have everything figured out. What's weighing on your heart right now? 💚🌱",
-      mood: 'neutral',
-      confidence: 0.5,
+      response: "Hey... I'm having a small technical moment, but I'm still here for you! 💚\n\nWhatever you're going through right now, your feelings are completely valid...\n\nYou matter, and I'm here to listen.\n\nWhat's on your heart? 🌱✨",
+      mood: 'supportive',
+      confidence: 0.8,
       needsHelp: false,
       treeContributed: true,
-      source: 'fallback'
+      source: 'emergency_fallback'
     });
   }
 }
