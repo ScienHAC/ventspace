@@ -21,16 +21,14 @@ interface Message {
   isTyping?: boolean
 }
 
-// Fix hydration issue with consistent time formatting
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('en-US', { 
     hour: "2-digit", 
     minute: "2-digit",
-    hour12: false // Use 24-hour format to avoid AM/PM differences
+    hour12: false
   })
 }
 
-// Helper function to simulate typing delay
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 export default function ChatPage() {
@@ -50,27 +48,27 @@ export default function ChatPage() {
   const [treesPlanted, setTreesPlanted] = useState(2)
   const [isLoading, setIsLoading] = useState(false)
   const [showEmergencyHelp, setShowEmergencyHelp] = useState(false)
-  const [isClient, setIsClient] = useState(false) // Fix hydration
+  const [isClient, setIsClient] = useState(false)
   const [typingMessageId, setTypingMessageId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null) // Add input ref
-  const requestInProgress = useRef(false) // Prevent double requests
-  const typingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null) // Add chat container ref
+  const inputRef = useRef<HTMLInputElement>(null)
+  const requestInProgress = useRef(false)
 
-  // Fix hydration by ensuring client-side rendering for timestamps
   useEffect(() => {
     setIsClient(true)
   }, [])
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
   }, [])
 
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  // Keep focus on input after sending message
   const keepInputFocus = useCallback(() => {
     setTimeout(() => {
       if (inputRef.current) {
@@ -83,7 +81,7 @@ export default function ChatPage() {
     const lowerText = text.toLowerCase()
     if (lowerText.includes("happy") || lowerText.includes("great") || lowerText.includes("awesome") || lowerText.includes("good") || lowerText.includes("love") || lowerText.includes("excited"))
       return "happy"
-    if (lowerText.includes("sad") || lowerText.includes("depressed") || lowerText.includes("down") || lowerText.includes("hurt") || lowerText.includes("cry"))
+    if (lowerText.includes("sad") || lowerText.includes("depressed") || lowerText.includes("down") || lowerText.includes("hurt") || lowerText.includes("cry") || lowerText.includes("bad") || lowerText.includes("disheartened"))
       return "sad"
     if (lowerText.includes("anxious") || lowerText.includes("worried") || lowerText.includes("nervous") || lowerText.includes("stress") || lowerText.includes("scared"))
       return "anxious"
@@ -92,7 +90,6 @@ export default function ChatPage() {
     return "neutral"
   }
 
-  // Word-by-word typing simulation
   const simulateTyping = async (fullText: string, messageId: string) => {
   const words = fullText.split(' ')
   let currentText = ''
@@ -110,7 +107,8 @@ export default function ChatPage() {
       )
     )
 
-    const delay = words[i].length < 3 ? 10 :
+    // 🧠 Faster delays — but still realistic
+    const delay = words[i].length < 3 ? 20 :
                   words[i].length < 6 ? 30 :
                   45
 
@@ -131,17 +129,15 @@ export default function ChatPage() {
   setTypingMessageId(null)
 }
 
-
   const handleSendMessage = async () => {
     if (!inputText.trim() || isLoading || requestInProgress.current) return
 
-    requestInProgress.current = true // Prevent double requests
+    requestInProgress.current = true
     const userMood = detectMood(inputText)
     const newVentCount = ventCount + 1
     let newTreesPlanted = treesPlanted
     let plantProgress = (newVentCount % 10) * 10
 
-    // Plant a tree every 10 vents
     if (newVentCount % 10 === 0) {
       newTreesPlanted += 1
       plantProgress = 0
@@ -162,18 +158,15 @@ export default function ChatPage() {
 
     const currentInputText = inputText
     
-    // Update UI immediately
     setMessages((prev) => [...prev, userMessage])
     setVentCount(newVentCount)
     setTreesPlanted(newTreesPlanted)
-    setInputText("") // Clear input
+    setInputText("")
     setIsLoading(true)
     
-    // Keep focus on input field
     keepInputFocus()
 
     try {
-      // Call the CHAT API, not mood API
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -191,7 +184,6 @@ export default function ChatPage() {
         throw new Error(data.error || 'Failed to send message');
       }
 
-      // Show emergency help if needed
       if (data.needsHelp) {
         setShowEmergencyHelp(true)
         toast({
@@ -201,11 +193,10 @@ export default function ChatPage() {
         })
       }
 
-      // Create AI message with empty text initially
       const aiMessageId = `ai-${Date.now()}`
       const aiResponse: Message = {
         id: aiMessageId,
-        text: "", // Start empty
+        text: "",
         sender: "ai",
         timestamp: new Date(),
         mood: "neutral",
@@ -216,7 +207,6 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, aiResponse])
       setIsLoading(false)
       
-      // Start word-by-word typing simulation
       await simulateTyping(data.response, aiMessageId)
       
     } catch (error) {
@@ -239,18 +229,16 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, fallbackResponse])
       setIsLoading(false)
       
-      // Simulate typing for fallback
       await simulateTyping(
         "I'm having some technical difficulties, but I want you to know - I'm here for you. Your feelings are valid, and you're not alone. What you're going through matters. 💚", 
         fallbackMessageId
       )
     } finally {
-      requestInProgress.current = false // Reset request lock
-      keepInputFocus() // Ensure focus returns to input
+      requestInProgress.current = false
+      keepInputFocus()
     }
   }
 
-  // Handle Enter key
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -292,7 +280,7 @@ export default function ChatPage() {
   }
 
   const handleEmergencyHelp = () => {
-    window.open('tel:988', '_blank') // US Crisis Lifeline
+    window.open('tel:988', '_blank')
   }
 
   const getMoodColor = (mood?: string) => {
@@ -316,9 +304,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-green-100 sticky top-0 z-50">
+    <div className="h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50 flex flex-col overflow-hidden">
+      {/* Fixed Header */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-green-100 flex-shrink-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-r from-green-400 to-blue-500 rounded-lg flex items-center justify-center">
@@ -364,11 +352,16 @@ export default function ChatPage() {
         </div>
       </header>
 
-      {/* Chat Container */}
-      <div className="container mx-auto px-4 py-6 max-w-4xl">
-        <div className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-xl border border-green-100 overflow-hidden">
-          {/* Messages */}
-          <div className="h-[60vh] overflow-y-auto p-6 space-y-4">
+      {/* Chat Container - Flexible Height */}
+      <div className="flex-1 flex flex-col container mx-auto px-4 py-6 max-w-4xl min-h-0">
+        <div className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-xl border border-green-100 flex flex-col flex-1 min-h-0">
+          
+          {/* Messages Container - Scrollable */}
+          <div 
+            ref={chatContainerRef}
+            className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0"
+            style={{ maxHeight: 'calc(100vh - 280px)' }} // Adjust based on header + input heights
+          >
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[70%] ${message.sender === "user" ? "order-2" : "order-1"}`}>
@@ -387,7 +380,6 @@ export default function ChatPage() {
                       )}
                       <div className="flex-1">
                         <div className={`${message.sender === "user" ? "text-white" : "text-gray-800"}`}>
-                          {/* Preserve line breaks in AI messages */}
                           {message.sender === "ai" ? (
                             <div className="whitespace-pre-line">
                               {message.text}
@@ -426,6 +418,7 @@ export default function ChatPage() {
                 </div>
               </div>
             ))}
+            
             {isLoading && (
               <div className="flex justify-start">
                 <div className="max-w-[70%]">
@@ -454,19 +447,19 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
-          <div className="border-t border-green-100 p-6 bg-white/50">
+          {/* Fixed Input Area */}
+          <div className="border-t border-green-100 p-6 bg-white/50 flex-shrink-0">
             <div className="flex items-center space-x-4">
               <div className="flex-1 relative">
                 <Input
-                  ref={inputRef} // Add ref for focus management
+                  ref={inputRef}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Share anything - stress, dreams, fears, joy, hobbies... I'm here for it all! 🌱"
                   className="pr-12 py-6 text-lg rounded-full border-green-200 focus:border-green-400"
-                  onKeyDown={handleKeyPress} // Use onKeyDown instead of onKeyPress
+                  onKeyDown={handleKeyPress}
                   disabled={isLoading || typingMessageId !== null}
-                  autoFocus // Auto focus on page load
+                  autoFocus
                 />
                 <Button
                   size="sm"
@@ -491,7 +484,7 @@ export default function ChatPage() {
             </div>
 
             <div className="mt-4 flex items-center justify-center space-x-6 text-sm text-gray-600">
-              <span>🧠 VentBot Typing...</span>
+              <span>🧠 Ultra-Robust VentBot Active</span>
               <span>🌱 {10 - (ventCount % 10)} vents until next tree</span>
               <span>🔒 100% Anonymous & Safe</span>
             </div>
